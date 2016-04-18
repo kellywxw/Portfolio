@@ -1,0 +1,77 @@
+<div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main" ng-controller="AdminController">
+    <h1>Admin</h1>
+    <h2>User List</h2>
+
+    <div class="table-responsive">
+        <table class="table sortable table-striped">
+            <thead>
+            <tr>
+                <th>
+                    <a ng-click="type = 'username'; reverse = !reverse">Username
+                        <span ng-show="reverse" class="glyphicon glyphicon-triangle-bottom"></span>
+                        <span ng-show="!reverse" class="glyphicon glyphicon-triangle-top"></span>
+                    </a></th>
+                <th><span></span> Password</th>
+                <th>
+                    <a ng-click="type = 'firstName'; reverse = !reverse">First Name
+                        <span ng-show="reverse" class="glyphicon glyphicon-triangle-bottom"></span>
+                        <span ng-show="!reverse" class="glyphicon glyphicon-triangle-top"></span>
+                    </a></th>
+                <th>
+                    <a ng-click="type = 'lastName'; reverse = !reverse">Last Name
+                        <span ng-show="reverse" class="glyphicon glyphicon-triangle-bottom"></span>
+                        <span ng-show="!reverse" class="glyphicon glyphicon-triangle-top"></span>
+                    </a></th>
+                <th><span></span> Roles</th>
+                <th><span></span> Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>
+                    <input ng-model="currUser.username" type="text" class="form-control" id="username" placeholder="username">
+                </td>
+                <td>
+                    <input ng-model="currUser.password" type="password" class="form-control" id="password" placeholder="password">
+                </td>
+                <td>
+                    <input ng-model="currUser.firstName" type="text" class="form-control" id="firstname" placeholder="first name">
+                </td>
+                <td>
+                    <input ng-model="currUser.lastName" type="text" class="form-control" id="lastname" placeholder="last name">
+                </td>
+                <td>
+                    <input ng-model="currUser.roles" type="text" class="form-control" id="roles" placeholder="role1, role2">
+                </td>
+                <td>
+                    <a ng-click="addUser(currUser)" class="btn btn-primary">
+                        <span class="glyphicon glyphicon-plus"></span>
+                    </a>
+                </td>
+                <td>
+                    <a ng-click="updateUser(currUser)" class="btn btn-success">
+                        <span class="glyphicon glyphicon-ok"></span>
+                    </a>
+                </td>
+            </tr>
+            <tr ng-repeat="user in users | orderBy:type:reverse">
+                <td>{{user.username}}</td>
+                <td>&nbsp;</td>
+                <td>{{user.firstName}}</td>
+                <td>{{user.lastName}}</td>
+                <td>{{user.roles}}</td>
+                <td>
+                    <a ng-click="deleteUser(user)" class="btn btn-danger">
+                        <span class="glyphicon glyphicon-remove"></span>
+                    </a>
+                </td>
+                <td>
+                    <a ng-click="selectUser(user)" class="btn btn-success">
+                        <span  class="glyphicon glyphicon-cog"></span>
+                    </a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

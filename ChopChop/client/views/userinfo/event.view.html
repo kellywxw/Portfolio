@@ -1,0 +1,90 @@
+<div ng-controller="EventController">
+    <div class="row" >
+        <div class="col-sm-12 col-lg-12">
+            <div ng-show="model.events">
+                <table class="table table-hover table-responsive">
+                    <h3>My Event List</h3>
+                    <thead>
+                    <tr>
+                        <th class="col-sm-2 col-lg-2">Poster</th>
+                        <th class="col-sm-2 col-lg-2">Title</th>
+                        <th class="col-sm-2 col-lg-2">Location</th>
+                        <th class="col-sm-2 col-lg-2">Start Date</th>
+                        <th class="col-sm-2 col-lg-2">End Date</th>
+                        <th class="col-sm-2 col-lg-2">Action</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr ng-repeat="event in model.events">
+                        <td><img height="75px" ng-src="{{event.poster}}"/></td>
+                        <td>{{event.title}}</td>
+                        <td>{{event.location}}</td>
+                        <td>{{event.start | date}}</td>
+                        <td>{{event.end | date}}</td>
+                        <td>
+                            <a class="btn btn-danger" ng-click="model.deleteEvent($index)">
+                                <span class="glyphicon glyphicon-remove"></span>
+                            </a>
+                            <a class="btn btn-warning" ng-click="model.selectEvent($index)">
+                                <span  class="glyphicon glyphicon-pencil"></span>
+                            </a>
+                        </td>
+                    </tr>
+                    </tbody>
+                    <tr>
+                        <td>
+                            <span class="btn btn-warning btn-file">
+                                <i class="glyphicon glyphicon-open"></i>
+                                <span>Upload </span><i class="glyphicon glyphicon-picture"></i>
+                                <input id="fileupload" type="file" name="files[]" multiple>
+                            </span>
+                        </td>
+                        <td>
+                            <input ng-model="model.newEvent.title" type="text" class="form-control" id="title" placeholder="title">
+                        </td>
+                        <td>
+                            <input ng-model="model.newEvent.location" type="text" class="form-control" id="location" placeholder="location">
+                        </td>
+                        <td>
+                            <input ng-model="model.newEvent.start" type="text" class="form-control" id="startDate" placeholder="start date">
+                        </td>
+                        <td>
+                            <input ng-model="model.newEvent.end" type="text" class="form-control" id="endDate" placeholder="end date">
+                        </td>
+                        <td>
+                            <a class="btn btn-warning" id="addEvent" ng-click="model.addEvent()">
+                                <span class="glyphicon glyphicon-plus"></span>
+                            </a>
+                            <a class="btn btn-warning" ng-click="model.updateEvent()">
+                                <span class="glyphicon glyphicon-ok"></span>
+                            </a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="selectEvent" class="modal fade" role="dialog">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 id="eventTitle" class="modal-title"></h4>
+                </div>
+                <div id="eventPoster" class="modal-body"></div>
+                <label class="control-label" for="eventLocation">Event Location</label>
+                <div id="eventLocation" class="modal-body"></div>
+                <label class="control-label" for="eventStart">Start Date</label>
+                <div id="eventStart" class="modal-body"></div>
+                <label class="control-label" for="eventEnd">End Date</label>
+                <div id="eventEnd" class="modal-body"></div>
+                <div class="modal-footer">
+                    <div class="col-sm-offset-3 col-sm-9">
+                        <button class="btn btn-default" data-dismiss="modal">Ok</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

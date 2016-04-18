@@ -1,0 +1,33 @@
+<div ng-controller="FriendController">
+    <div class="col-sm-12 col-lg-12">
+        <div ng-show="model.userFollows.length == 0 && model.userFollowsMe.length == 0" class="alert alert-warning">
+            <strong>{{model.message}}</strong>
+        </div>
+        <div ng-show="model.userFollows.length>0" >
+            <h3>Users I Follow</h3>
+            <ul>
+                <div ng-repeat="user in model.userFollows">
+                    <li>
+                        <a href="#/profileFriend/{{user._id}}">
+                            {{user.username}}
+                        </a>
+                    </li>
+                </div>
+            </ul>
+        </div>
+
+        <div ng-show="model.userFollowsMe.length>0" >
+            <h3>Users Following Me</h3>
+            <ul>
+                <div ng-repeat="user in model.userFollowsMe">
+                    <li>
+                        <a href="#/profileFriend/{{user._id}}">
+                            {{user.username}}
+                         </a>
+                    </li>
+
+                </div>
+            </ul>
+        </div>
+    </div>
+</div>
