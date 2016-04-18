@@ -1,0 +1,1010 @@
+;; Kelly Wang 
+;; CS 5010 - Seattle
+;; Problem Set #13
+;; Due Mon 4/20/15
+
+#lang racket
+(define TIME-ON-TASK 40)
+;;(check-location "13" "defense.rkt")
+
+;; ===== REQUIRES ==============================================================
+(require "extras.rkt")
+(require rackunit)
+(require lang/posn)
+(require 2htdp/image)
+(require 2htdp/universe)
+
+;; ===== PROVIDE ===============================================================
+(provide Unit<%>)
+(provide StatefulWorld<%>)
+(provide mk-world)
+(provide mk-ally)
+(provide mk-enemy)
+(provide mk-merc)
+
+;; ===== DATA DEFINITION =======================================================
+
+; A Velocity is a Natural, representing Pixels/tick in the downward direction.
+
+;; ===== CONSTANTS =============================================================
+
+;; ----- SCENE-CONSTANTS ---------------
+(define WIDTH 400)
+(define HEIGHT 500)
+(define EMPTY-SCENE (empty-scene WIDTH HEIGHT))
+
+;; ----- POINTER -----
+(define POINTER-COLOR 'black)
+(define POINTER-SIZE 5)
+(define POINTER-INNER-CIRCLE (circle POINTER-SIZE 'outline POINTER-COLOR))
+(define POINTER-OUTER-CIRCLE (circle (* 2 POINTER-SIZE) 'outline POINTER-COLOR))
+(define POINTER-CIRCLES (overlay POINTER-INNER-CIRCLE POINTER-OUTER-CIRCLE))
+(define 2XPR (* 2 POINTER-SIZE))
+(define 4XPR (* 4 POINTER-SIZE))
+(define POINTER-IMAGE (add-line 
+                       (add-line POINTER-CIRCLES 2XPR 0 2XPR 4XPR 'black)
+                       0 2XPR 4XPR 2XPR 'black))
+
+;; ----- GAME-CONSTANTS ---------------
+(define SCORE-FONT-SIZE 20)
+(define SCORE-COLOR 'black)
+(define UNIT-SPAWN-RATE 4)
+(define WIN-SCORE 2250)
+(define LOSE-SCORE -200)
+(define GAME-OVER (text "Game Over" 40 'red))
+
+;; ----- BASE-CONSTANTS ---------------
+(define BASE-COLOR 'yellow)
+(define BASE-ADDITION 50)
+(define BASE-DIVISOR 5)
+
+;; ----- UNIT-CONSTANTS ---------------
+;; ----- ALLY -----
+(define ALLY-SIZE 20)
+(define ALLY-COLOR 'green)
+(define ALLY-IMAGE (rectangle ALLY-SIZE ALLY-SIZE 'solid ALLY-COLOR))
+(define ALLY-KILLED -20)
+(define ALLY-SCORED 20)
+(define ALLY-SIZE/2 (/ ALLY-SIZE 2))
+
+;; ----- ENEMY -----
+(define ENEMY-RADIUS 12)
+(define ENEMY-COLOR 'red)
+(define ENEMY-IMAGE (circle ENEMY-RADIUS 'solid ENEMY-COLOR))
+(define ENEMY-KILLED 40)
+(define ENEMY-SCORED -40)
+
+;; ----- MERCENARY -----
+(define MERCENARY-STARTING-STATE 'Ally)
+(define MERCENARY-TICK 3)
+(define MERCENARY-KILLED-AS-ALLY -60)
+(define MERCENARY-KILLED-AS-ENEMY 60)
+(define MERCENARY-SCORED-AS-ALLY 60)
+(define MERCENARY-SCORED-AS-ENEMY -60)
+
+;; ----- GENERAL -----
+(define STARTING-Y 0)
+(define GREATEST-SIZE (max ALLY-SIZE (* 2 ENEMY-RADIUS)))
+(define NUM-UNITS% 3)
+
+;; ----- INITIAL-CONSTANTS ---------------
+;; ----- OTHER -----
+(define INITIAL-SCORE 0)
+(define INITIAL-TICK 0)
+(define INITIAL-MOUSE-X 200)
+(define INITIAL-MOUSE-Y 200)
+(define INITIAL-MAX 10)
+(define INITIAL-MIN 1)
+(define INITIAL-NUM-UNITS 5)
+
+;; ----- BASE -----
+(define BASE-INITIAL-HEIGHT 50)
+(define BASE-INITIAL-WIDTH 400)
+(define INITIAL-BASE-IMAGE (rectangle BASE-INITIAL-WIDTH BASE-INITIAL-HEIGHT
+                                      'solid BASE-COLOR))
+
+;; ===== FUNCTIONS =============================================================
+;; ===== UNITS ===============
+;; ----- INTERFACE -----
+; Represents a unit in the game.
+(define Unit<%>
+  (interface ()
+    ; get-loc : -> posn
+    ; PURPOSE: Returns the location of this unit as a posn.
+    get-loc
+    
+    ; get-color : -> Color
+    ; PURPOSE: Returns the color of this unit.
+    get-color
+    
+    ; score-me : -> Integer
+    ; PURPOSE: Returns the score of the unit 
+    ; after it is killed or hits the base.
+    score-me
+    
+    ; scored? : -> Boolean
+    ; PURPOSE: Retruns true if the unit% is touching or crossed into the base
+    scored?
+    
+    ; within-unit%? : -> Boolean
+    ; PURPOSE: Returns true if the mouse position is within the unit%
+    within-unit%?
+    
+    ; update-unit% : -> Unit<%>
+    ; PURPOSE: Updates this unit to its next state  
+    update-unit%
+    
+    ; render-unit% : -> Image
+    ; PURPOSE: Returns the image of this unit.
+    render-unit%))
+
+;; ----- CLASSES -----
+
+;; ----- ALLY -----
+; A Ally% is a (new Ally% [color Symbol][x Coordinate]
+;                         [y Coordinate][velocity Integer])
+; Interpretation: represents the color, center-x-coordinate, center-y-coordinate
+; and the velocity of the ally unit
+(define Ally%
+  (class* object% (Unit<%>)
+    (init-field color       ; Symbol, the color of ally unit
+                x           ; Coordinate, the center-x-coordinate of ally unit
+                y           ; Coordinate, the center-y-coordinate of ally unit
+                velocity)   ; Integer, the velocity of ally unit
+    
+    (inspect false)
+    (super-new)
+    
+    (define/public (get-loc)
+      (make-posn x y))
+    
+    (define/public (get-color)
+      color)
+    
+    (define/public (score-me scored?)
+      (if scored?
+          ALLY-SCORED
+          ALLY-KILLED))
+    
+    (define/public (scored? base-height)
+      (>= (+ y ALLY-SIZE/2) (- HEIGHT base-height)))
+    
+    (define/public (within-unit%? mouse-x mouse-y)
+      (and (and (<= (- x ALLY-SIZE/2) mouse-x)
+                (>= (+ x ALLY-SIZE/2) mouse-x))
+           (and (<= (- y ALLY-SIZE/2) mouse-y)
+                (>= (+ y ALLY-SIZE/2) mouse-y))))
+    
+    (define/public (update-unit%)
+      (begin (set! y (+ y velocity)) this))
+    
+    (define/public (render-unit% scene)
+      (place-image ALLY-IMAGE x y scene))))
+
+; TEST-FUNCTION
+; get-loc-and-color : Unit<%> -> (list Posn Symbol)
+; PURPOSE: Returns a list that contains the position and color of the unit
+(define (get-loc-and-color unit%)
+  (list (send unit% get-loc)
+        (send unit% get-color)))
+
+; TEST-CONSTANT
+(define SAMPLE-ALLY (new Ally%
+                         [color ALLY-COLOR]
+                         [x 50]
+                         [y 50]
+                         [velocity 4]))
+; TESTS
+(begin-for-test
+  (check-equal? (send SAMPLE-ALLY get-loc)
+                (make-posn 50 50)
+                "test get-loc")
+  (check-equal? (send SAMPLE-ALLY get-color)
+                'green
+                "test get-color")
+  (check-equal? (send SAMPLE-ALLY score-me true)
+                20
+                "test score-me")
+  (check-equal? (send SAMPLE-ALLY score-me false)
+                -20
+                "test score-me")
+  (check-equal? (send SAMPLE-ALLY within-unit%? 50 50)
+                true
+                "test within-unit%?")
+  (check-equal? (get-loc-and-color (send SAMPLE-ALLY update-unit%))
+                (list (make-posn 50 54) ALLY-COLOR)
+                "test update-unit%")
+  (check-equal? (send SAMPLE-ALLY render-unit% EMPTY-SCENE)
+                (place-image ALLY-IMAGE 50 54 EMPTY-SCENE)
+                "test render-unit%"))
+
+
+;; ----- ENEMY -----
+; A Enemy% is a (new Enemy% [color Symbol][x Coordinate]
+;                           [y Coordinate][velocity Integer])
+; Interpretation: represents the color, center-x-coordinate, center-y-coordinate
+; and the velocity of the enemy unit
+(define Enemy%
+  (class* object% (Unit<%>)
+    (init-field color      ; Symbol, the color of enemy unit
+                x          ; Coordinate, the center-x-coordinate of enemy unit
+                y          ; Coordinate, the center-y-coordinate of enemy unit
+                velocity)  ; Integer, the velocity of enemy unit
+    
+    (inspect false)
+    (super-new)
+    
+    (define/public (get-loc)
+      (make-posn x y))
+    
+    (define/public (get-color)
+      color)
+    
+    (define/public (score-me scored?)
+      (if scored?
+          ENEMY-SCORED
+          ENEMY-KILLED))
+    
+    (define/public (scored? base-height)
+      (>= (+ y ENEMY-RADIUS) (- HEIGHT base-height)))
+    
+    (define/public (within-unit%? mouse-x mouse-y)
+      (<= (sqrt (+ (sqr (- x mouse-x)) (sqr (- y mouse-y)))) ENEMY-RADIUS))
+    
+    (define/public (update-unit%)
+      (begin (set! y (+ y velocity)) this))
+    
+    (define/public (render-unit% scene)
+      (place-image ENEMY-IMAGE x y scene))))
+
+; TEST-CONSTANT
+(define SAMPLE-ENEMY (new Enemy%
+                          [color ENEMY-COLOR]
+                          [x 150]
+                          [y 150]
+                          [velocity 8]))
+; TESTS
+(begin-for-test
+  (check-equal? (send SAMPLE-ENEMY get-loc)
+                (make-posn 150 150)
+                "test get-loc")
+  (check-equal? (send SAMPLE-ENEMY get-color)
+                'red
+                "test get-color")
+  (check-equal? (send SAMPLE-ENEMY score-me true)
+                -40
+                "test score-me")
+  (check-equal? (send SAMPLE-ENEMY score-me false)
+                40
+                "test score-me")
+  (check-equal? (send SAMPLE-ENEMY within-unit%? 150 150)
+                true
+                "test within-unit%?")
+  (check-equal? (get-loc-and-color (send SAMPLE-ENEMY update-unit%))
+                (list (make-posn 150 158) ENEMY-COLOR)
+                "test update-unit%")
+  (check-equal? (send SAMPLE-ENEMY render-unit% EMPTY-SCENE)
+                (place-image ENEMY-IMAGE 150 158 EMPTY-SCENE)
+                "test render-unit%"))               
+
+
+;; ----- MERC -----
+; A Merc% is a (new Merc% [color Symbol][x Coordinate][y Coordinate]
+;                         [tick Integer][state Symbol][velocity Integer])
+; Interpretation: represents the color, center-x-coordinate, center-y-coordinate
+; the count of the ticks until the next state-change, the state, and the
+; velocity of the mercenary unit
+(define Merc%
+  (class* object% (Unit<%>)
+    (init-field color  ; Symbol, the color of mercenary unit
+                x      ; Coordinate, the center-x-coordinate of mercenary unit
+                y      ; Coordinate, thecenter-y-coordinate of mercenary unit
+                tick   ; Integer, the count of the ticks until the next state 
+                ; change (between 0 and 3)
+                state  ; Symbol, the state of mercenary - Ally or Enemy
+                velocity) ; Integer, the velocity of mercenary unit
+    
+    (inspect false)
+    (super-new)
+    
+    (define/public (get-loc)
+      (make-posn x y))
+    
+    (define/public (get-color)
+      color)   
+    
+    (define/public (score-me scored?)
+      (cond
+        [(and (symbol=? 'Ally state) scored?) MERCENARY-SCORED-AS-ALLY]
+        [(and (symbol=? 'Ally state) (not scored?)) MERCENARY-KILLED-AS-ALLY]
+        [(and (symbol=? 'Enemy state) scored?) MERCENARY-SCORED-AS-ENEMY]
+        [(and (symbol=? 'Enemy state) (not scored?))
+         MERCENARY-KILLED-AS-ENEMY]))
+    
+    (define/public (scored? base-height)
+      (cond
+        [(symbol=? 'Ally state) 
+         (send (mk-ally (make-posn x y) velocity) scored? base-height)]
+        [(symbol=? 'Enemy state) 
+         (send (mk-enemy (make-posn x y) velocity) scored? base-height)]))
+    
+    (define/public (within-unit%? mouse-x mouse-y)
+      (cond
+        [(symbol=? 'Ally state)
+         (send (mk-ally (make-posn x y) velocity) 
+               within-unit%? mouse-x mouse-y)]
+        [(symbol=? 'Enemy state)
+         (send (mk-enemy (make-posn x y) velocity) 
+               within-unit%? mouse-x mouse-y)]))
+    
+    (define/public (update-unit%)
+      ; update-merc : -> Merc%
+      ; PURPOSE: Returns Merc% updated to its next state 
+      ; with updated color, tick reset to 0, updated state, 
+      ; and its updated y position
+      (define (update-merc)
+        ; Switch color of the unit
+        (define updated-color 
+          (cond
+            [(symbol=? ENEMY-COLOR color) ALLY-COLOR]
+            [(symbol=? ALLY-COLOR color) ENEMY-COLOR]))
+        
+        ; Switch state of the unit
+        (define updated-state 
+          (cond 
+            [(symbol=? 'Enemy state) 'Ally]
+            [(symbol=? 'Ally state) 'Enemy]))
+        
+        (begin 
+          (set! color updated-color) 
+          (set! tick 0)
+          (set! state updated-state)
+          (set! y (+ y velocity)) this))
+      
+      ; increment-tick : -> Merc%
+      ; PURPOSE: Returns Merc% updated to its next state 
+      ; with an incremented tick and its updated y position
+      (define (increment-tick)
+        (begin (set! tick (add1 tick))
+               (set! y (+ y velocity)) this))
+      
+      (if (= tick MERCENARY-TICK)
+          (update-merc)
+          (increment-tick)))
+    
+    (define/public (render-unit% scene)
+      (cond
+        [(symbol=? 'Ally state) (place-image ALLY-IMAGE x y scene)]
+        [(symbol=? 'Enemy state) (place-image ENEMY-IMAGE x y scene)]))))
+
+
+; TEST-CONSTANT
+(define SAMPLE-MERC-ALLY (new Merc%
+                              [color ALLY-COLOR]
+                              [x 250]
+                              [y 250]
+                              [tick 2]
+                              [state 'Ally]
+                              [velocity 2]))
+(define SAMPLE-MERC-ENEMY (new Merc%
+                               [color ENEMY-COLOR]
+                               [x 250]
+                               [y 250]
+                               [tick 2]
+                               [state 'Enemy]
+                               [velocity 2]))
+; TESTS
+(begin-for-test
+  (check-equal? (send SAMPLE-MERC-ALLY get-loc)
+                (make-posn 250 250)
+                "test get-loc")
+  (check-equal? (send SAMPLE-MERC-ALLY get-color)
+                'green
+                "test get-color")
+  (check-equal? (send SAMPLE-MERC-ALLY score-me true)
+                60
+                "test score-me - scored as ally")
+  (check-equal? (send SAMPLE-MERC-ALLY score-me false)
+                -60
+                "test score-me - killed as ally")
+  (check-equal? (send SAMPLE-MERC-ENEMY score-me true)
+                -60
+                "test score-me - scored as enemy")
+  (check-equal? (send SAMPLE-MERC-ENEMY score-me false)
+                60
+                "test score-me - killed as enemy")
+  (check-equal? (send SAMPLE-MERC-ALLY scored? 50)
+                #f
+                "test score? - Ally")
+  (check-equal? (send SAMPLE-MERC-ENEMY scored? 50)
+                #f
+                "test score? - ENEMY")
+  (check-equal? (send SAMPLE-MERC-ALLY within-unit%? 250 250)
+                true
+                "test within-unit%? - ally")
+  (check-equal? (send SAMPLE-MERC-ENEMY within-unit%? 250 250)
+                true
+                "test within-unit%? -enemy")
+  ; test merc as a ally 
+  (check-equal? (get-loc-and-color (send SAMPLE-MERC-ALLY update-unit%))
+                (list (make-posn 250 252) ALLY-COLOR)
+                "test update-unit% - tick 2 -> tick 3")
+  (check-equal? (send SAMPLE-MERC-ALLY render-unit% EMPTY-SCENE)
+                (place-image ALLY-IMAGE 250 252 EMPTY-SCENE)
+                "test render-unit% - ally")
+  (check-equal? (get-loc-and-color (send SAMPLE-MERC-ALLY update-unit%))
+                (list (make-posn 250 254) ENEMY-COLOR)
+                "test update-unit% - tick 3 -> tick 0")
+  ; test merc as a enemy 
+  (check-equal? (get-loc-and-color (send SAMPLE-MERC-ENEMY update-unit%))
+                (list (make-posn 250 252) ENEMY-COLOR)
+                "test update-unit% - tick 2 -> tick 3")
+  (check-equal? (send SAMPLE-MERC-ENEMY render-unit% EMPTY-SCENE)
+                (place-image ENEMY-IMAGE 250 252 EMPTY-SCENE)
+                "test render-unit% - enemy")
+  (check-equal? (get-loc-and-color (send SAMPLE-MERC-ENEMY update-unit%))
+                (list (make-posn 250 254) ALLY-COLOR)
+                "test update-unit% - tick 3 -> tick 0"))
+
+;; ===== WORLD ===============
+;; ----- INTERFACE -----
+(define StatefulWorld<%>
+  (interface ()
+    ; on-tick! : -> Void
+    ; EFFECT: Mutates this world to its next state.
+    on-tick!
+    
+    ; on-mouse! : Coordinate Coordinate MouseEvent -> Void
+    ; EFFECT: Mutates this world to its next state from the given mouse 
+    ; parameters.
+    on-mouse!
+    
+    ; target-loc : -> Posn
+    ; PURPOSE: Returns the center of the target as a posn.
+    target-loc
+    
+    ; get-units : -> ListOf<Unit<%>>
+    ; PURPOSE: Returns the current units in this world.
+    get-units
+    
+    ; add-unit! : Unit<%> -> Void
+    ; EFFECT: Adds the given unit to the world
+    add-unit!
+    
+    ; get-base-height : -> Natural
+    ; PURPOSE: Returns the height of the base, in pixels.
+    get-base-height
+    
+    ; render : -> Image
+    ; PURPOSE: Returns image of the current world
+    render
+    
+    ; end?: -> Boolean
+    ; PURPOSE: Returns true if score is <= than LOSE-SCORE or >= than WIN-SCORE
+    end?
+    
+    ; render-last: -> Image
+    ; PURPOSE: Returns the image of the last scene when game ends
+    render-last))
+
+
+;; ----- MULTI-USE -----
+; generate-velocity : -> Integer
+; PURPOSE: Returns a velocity between the min and max velocity
+; STRATEGY: Function Composition
+(define (generate-velocity max-vel min-vel) 
+  (+ min-vel (random (- (add1 max-vel) min-vel))))
+
+; generate-x : -> Integer
+; PURPOSE: Returns the randomly generated center-x-coordinate of unit%'s 
+; position
+; STRATEGY: Function Composition
+(define (generate-x)
+  (+ (random (- WIDTH GREATEST-SIZE)) GREATEST-SIZE))
+
+; generate-y : -> Integer
+; PURPOSE: Returns the randomly generatedcenter-y-coordinate of unit%'s position
+; STRATEGY: Function Composition
+(define (generate-y)
+  STARTING-Y)
+
+; add-new-unit% : Velocity Velocity Natural -> Unit<%>
+; PURPOSE: Returns a random unit based on the given maximum and minimum velocity
+; and the random number 
+; STRATEGY: Function Composition
+(define (add-new-unit% max-vel min-vel random-num)
+  (cond
+    [(= 0 random-num) (new Ally% 
+                           [color ALLY-COLOR]
+                           [x (generate-x)]
+                           [y (generate-y)]
+                           [velocity (generate-velocity max-vel min-vel)])]
+    [(= 1 random-num) (new Enemy%
+                           [color ENEMY-COLOR]
+                           [x (generate-x)]
+                           [y (generate-y)]
+                           [velocity (generate-velocity max-vel min-vel)])]
+    [(= 2 random-num)(new Merc%
+                          [color ALLY-COLOR]
+                          [x (generate-x)]
+                          [y (generate-y)]
+                          [tick 0]
+                          [state MERCENARY-STARTING-STATE]
+                          [velocity (generate-velocity max-vel min-vel)])]))
+; TESTS
+(begin-for-test
+  (check-equal? (send (add-new-unit% 2 1 0) get-color)
+                ALLY-COLOR
+                "generate ally")
+  (check-equal? (send (add-new-unit% 2 1 1) get-color)
+                ENEMY-COLOR
+                "generate enemy")
+  (check-equal? (send (add-new-unit% 2 1 2) get-color)
+                ALLY-COLOR
+                "generate merc"))
+
+;; ----- CLASS -----
+; A World% is a (new World% [units% ListOf<Unit<%>>][score Integer]
+;                           [base-height Integer][target Posn][tick Integer]
+;                           [min-vel Integer] [max-vel Integer])
+; Interpretation: represents a world including a list of units, 
+; current score, the height of the base, the target (mouse) position, 
+; the count of the ticks until the next unit% is added, the max and min possible
+; velocities.
+(define World%
+  (class* object% (StatefulWorld<%>)
+    (init-field units%      ; ListOf<Unit<%>>, representing the list of unit%
+                score       ; Integer, representing the current score
+                base-height ; Integer, representing the current base height
+                target      ; Posn, representing the center of the mouse target
+                tick        ; Integer, represents the current tick of the world
+                min-vel     ; Integer, represents the min-vel of created units%
+                max-vel)    ; Integer, represents the max-vel of created units%
+    
+    (inspect false)
+    (super-new)
+    
+    ; change-base-height : -> Integer
+    ; PURPOSE: Returns new base height based on the score
+    (define (change-base-height)
+      (+ BASE-ADDITION (/ score BASE-DIVISOR)))
+    
+    (define/public (on-tick!)
+      ; scored? : Unit<%> -> Boolean
+      ; PURPOSE: Returns true if the y coordinate of the unit is
+      ; within the base region, and sends to unit% function.
+      (define (scored? unit%)
+        (send unit% scored? base-height))
+      
+      ; change-score : -> Integer
+      ; PURPOSE: Returns the new score after the units hit the base
+      (define (change-score)
+        ; Local Constant - represents all of the scored units
+        (define scored-units (filter (lambda (unit%) (scored? unit%)) units%))
+        
+        (+ score (apply + (map (lambda (unit%) (send unit% score-me #t))
+                               scored-units))))
+      
+      ; remove-scored-units : -> ListOf<Unit<%>>
+      ; PURPOSE: Returns a list of units that has not reached the base 
+      (define (remove-scored-units)
+        (filter (lambda (unit%) (not (scored? unit%))) units%))
+      
+      ; shared-set! : -> Void
+      ; EFFECTS: Mutates all the the shared set! that occurs every tick
+      (define (shared-set!)
+        ; Move & Update Mercenary
+        (set! units% (map (lambda (unit%) (send unit% update-unit%)) units%))
+        (set! score (change-score)) ; Update Score
+        (set! units% (remove-scored-units)) ; Remove scored units%
+        (set! tick (add1 tick)) ; Increment tick
+        (set! base-height (change-base-height))) ; Change base height
+      
+      (if (= (modulo tick UNIT-SPAWN-RATE) 0)
+          (begin
+            (shared-set!)
+            (set! units% (cons (add-new-unit% ; Add new unit
+                                max-vel min-vel (random 3)) units%)))
+          (shared-set!)))
+    
+    
+    (define/public (on-mouse! mouse-x mouse-y mouse-event)
+      ; button-down-events : Coordinate Coordinate -> Void
+      ; PURPOSE: Returns the updated world to its next state 
+      ; from the given mouse parameters
+      ; WHERE: mouse-event is botton-down
+      (define (button-down-event mouse-x mouse-y)
+        ; surviving-units% : -> ListOf<Unit<%>>
+        ; PURPOSE: Returns a list of units that has not been clicked on 
+        (define surviving-units%
+          (filter (lambda (unit%) 
+                    (not (send unit% within-unit%? mouse-x  mouse-y))) units%))
+        
+        ; destroyed-units% : -> ListOf<Unit<%>>
+        ; PURPOSE: Returns a list of units that has been clicked on 
+        (define destroyed-units%
+          (filter (lambda (unit%) 
+                    (send unit% within-unit%? mouse-x mouse-y)) units%))
+        
+        ; change-score : Boolean -> Integer
+        ; PURPOSE: Returns the new score after the units have been destroyed
+        (define (change-score)
+          (+ score (apply + (map (lambda (x) (send x score-me #f)) 
+                                 destroyed-units%))))
+        (begin
+          (set! units% surviving-units%)
+          (set! score (change-score))
+          (set! base-height (change-base-height))))
+      
+      (cond 
+        [(string=? "button-down" mouse-event)
+         (button-down-event mouse-x mouse-y)]
+        [(string=? "move" mouse-event)
+         (set! target (make-posn mouse-x mouse-y))]
+        [else void]))
+    
+    (define/public (target-loc)
+      target)
+    
+    (define/public (get-units)
+      units%)
+    
+    (define/public (add-unit! unit%) 
+      (set! units% (cons unit% units%)))
+    
+    (define/public (get-base-height)
+      base-height)
+    
+    (define/public (render)
+      ; Local constant: add score and base as images to the scene
+      (define render-base-score
+        (local(; Local constant: score as an image
+               (define score->img (text (number->string score) 
+                                        SCORE-FONT-SIZE SCORE-COLOR)) 
+               ; Local constant: base as an image
+               (define base->img 
+                 (rectangle BASE-INITIAL-WIDTH base-height 'solid BASE-COLOR)))
+          
+          (overlay/align "middle" "bottom" score->img base->img EMPTY-SCENE)))
+      
+      ; render-units% : ListOf<Unit<%>> -> Image
+      ; PURPOSE: Adds a list of units' images to the scene
+      (define (render-units% units%)
+        (foldr (lambda (unit% scene) (send unit% render-unit% scene))
+               render-base-score units%))
+      
+      (place-image POINTER-IMAGE (posn-x target) (posn-y target)
+                   (render-units% units%)))
+    
+    (define/public (end?)
+      (or (<= score LOSE-SCORE)
+          (>= score WIN-SCORE)))
+    
+    (define/public (render-last)
+      (overlay GAME-OVER (send this render)))))
+
+; TEST-CONSTANT
+(define TEST-ALLY (new Ally%
+                       [color ALLY-COLOR]
+                       [x 50]
+                       [y 442]
+                       [velocity 4]))
+
+(define TEST-WORLD (new World% 
+                        [units% (list TEST-ALLY SAMPLE-ENEMY)]
+                        [score 0]
+                        [base-height BASE-INITIAL-HEIGHT]
+                        [target (make-posn 200 200)] 
+                        [tick 1]
+                        [min-vel 1]
+                        [max-vel 2]))
+
+(define TEST-WORLD-ADD-UNIT (new World% 
+                                 [units% (list TEST-ALLY SAMPLE-ENEMY)]
+                                 [score 0]
+                                 [base-height BASE-INITIAL-HEIGHT]
+                                 [target (make-posn 200 200)] 
+                                 [tick 4]
+                                 [min-vel 1]
+                                 [max-vel 2]))
+; TESTS
+(begin-for-test
+  "test on-tick : initial"
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send TEST-WORLD get-units))
+                (list (list (make-posn 50 442) 'green) 
+                      (list (make-posn 150 158) 'red)))
+  (check-equal? (send TEST-WORLD get-base-height) 50)
+  (send TEST-WORLD on-tick!)
+  "test on-tick : after 1 tick - no unit scored"
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send TEST-WORLD get-units))
+                (list (list (make-posn 150 166) 'red))
+                "test on-tick : one unit scored")  
+  (check-equal? (send TEST-WORLD get-base-height) 54)
+  (send TEST-WORLD on-tick!)
+  "test on-tick : after 2 tick - one unit scored"
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send TEST-WORLD get-units))
+                (list (list (make-posn 150 174) 'red)))
+  (check-equal? (send TEST-WORLD get-base-height) 54)
+  "test on-tick : after 3 tick - add new unit to world"
+  (send TEST-WORLD-ADD-UNIT on-tick!)
+  (check-equal? (length (send TEST-WORLD-ADD-UNIT get-units)) 2)
+  
+  "test on-mouse : initial"
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send TEST-WORLD get-units))
+                (list (list (make-posn 150 182) 'red)))
+  (check-equal? (send TEST-WORLD get-base-height) 54)
+  (check-equal? (send TEST-WORLD target-loc) (make-posn 200 200))
+  "test on-mouse :  no unit destroyed"
+  (send TEST-WORLD on-mouse! 200 200 "button-down")
+  (send TEST-WORLD on-mouse! 200 200 "move")
+  (send TEST-WORLD on-mouse! 200 200 "left")
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send TEST-WORLD get-units))
+                (list (list (make-posn 150 182) 'red)))
+  (check-equal? (send TEST-WORLD get-base-height) 54)
+  (check-equal? (send TEST-WORLD target-loc) (make-posn 200 200))
+  "test on-mouse:  - unit destroyed"
+  (send TEST-WORLD on-mouse! 150 182 "button-down")
+  (check-equal? (send TEST-WORLD get-units) empty)
+  (check-equal? (send TEST-WORLD get-base-height) 62)
+  (check-equal? (send TEST-WORLD target-loc) (make-posn 200 200))
+  
+  "test add-unit!"
+  (send TEST-WORLD add-unit! SAMPLE-ALLY)
+  (check-equal? (send TEST-WORLD get-units)  (list SAMPLE-ALLY))
+  
+  "test render"
+  (check-equal?
+   (send TEST-WORLD render)
+   (place-images (list ALLY-IMAGE POINTER-IMAGE)
+                 (list (make-posn 50 54)
+                       (make-posn 200 200))
+                 (overlay/align "middle" "bottom" 
+                                (text "60" SCORE-FONT-SIZE SCORE-COLOR)
+                                (rectangle BASE-INITIAL-WIDTH 62 
+                                           'solid BASE-COLOR) EMPTY-SCENE)))
+  
+  "test end"
+  (check-equal? (send TEST-WORLD end?) #f)
+  (check-equal? (send TEST-WORLD render-last)
+                (overlay GAME-OVER
+                         (place-images 
+                          (list ALLY-IMAGE POINTER-IMAGE)
+                          (list (make-posn 50 54)
+                                (make-posn 200 200))
+                          (overlay/align "middle" "bottom" 
+                                         (text "60" SCORE-FONT-SIZE SCORE-COLOR)
+                                         (rectangle BASE-INITIAL-WIDTH 62 
+                                                    'solid BASE-COLOR) 
+                                         EMPTY-SCENE)))))
+;; ===== MK-FUNCTIONS ===============
+; mk-world : Velocity Velocity Natural -> StatefulWorld<%>
+; Creates a world with num-units initial random units,
+; where units have a velocity between the specified min and max.
+; WHERE: min-vel <= max-vel
+(define (mk-world max-vel min-vel num-units)
+  (new World% 
+       [units% (build-list num-units 
+                           (lambda (unit) 
+                             (add-new-unit%  max-vel min-vel 
+                                             (random NUM-UNITS%))))]
+       [score INITIAL-SCORE]
+       [base-height BASE-INITIAL-HEIGHT]
+       [target (make-posn INITIAL-MOUSE-X INITIAL-MOUSE-Y)] 
+       [tick INITIAL-TICK]
+       [min-vel min-vel]
+       [max-vel max-vel]))
+
+; TEST
+(begin-for-test
+  (check-equal? (length (send (mk-world 2 1 1) get-units)) 1))
+
+; mk-ally : posn Velocity -> Unit<%>
+; Creates an ally unit with the given parameters.
+(define (mk-ally posn velocity)
+  (new Ally%
+       [color ALLY-COLOR]
+       [x (posn-x posn)]
+       [y (posn-y posn)]
+       [velocity velocity]))
+
+; TEST
+(begin-for-test
+  (check-equal? (mk-ally (make-posn 10 20) 6) 
+                (new Ally%
+                     [color ALLY-COLOR]
+                     [x 10]
+                     [y 20]
+                     [velocity 6])))
+
+; mk-enemy : posn Velocity -> Unit<%>
+; Creates an enemy unit with the given parameters.
+(define (mk-enemy posn velocity)
+  (new Enemy%
+       [color ENEMY-COLOR]
+       [x (posn-x posn)]
+       [y (posn-y posn)]
+       [velocity velocity]))
+
+; TEST
+(begin-for-test
+  (check-equal? (mk-enemy (make-posn 10 20) 6) 
+                (new Enemy%
+                     [color ENEMY-COLOR]
+                     [x 10]
+                     [y 20]
+                     [velocity 6])))
+
+; mk-merc : posn Velocity -> Unit<%>
+; Creates a mercenary unit with the given parameters.
+(define (mk-merc posn velocity)
+  (new Merc%
+       [color ALLY-COLOR]
+       [x (posn-x posn)]
+       [y (posn-y posn)]
+       [tick INITIAL-TICK]
+       [state MERCENARY-STARTING-STATE]
+       [velocity velocity]))
+
+; TEST
+(begin-for-test
+  (check-equal? (mk-merc  (make-posn 10 20) 6) 
+                (new Merc%
+                     [color ALLY-COLOR]
+                     [x 10]
+                     [y 20]
+                     [tick 0]
+                     [state 'Ally]
+                     [velocity 6])))
+
+;; ----- INITIAL-WORLD-CONSTANT ---------------
+(define INITIAL-WORLD (mk-world INITIAL-MAX INITIAL-MIN INITIAL-NUM-UNITS))
+
+;; ===== BIG-BANG-FUNCTIONS ====================================================
+
+;; ===== ON-TICK ===============
+; next-world : World% -> World%
+; PURPOSE: Returns the world to its next state after each tick
+(define (next-world world)
+  (send world on-tick!)
+  world)
+
+
+; TEST-CONSTANT
+(define TEST-WORLD-1 (new World% 
+                          [units% (list (new Ally% [color 'green][x 50][y 50]
+                                             [velocity 4]))]
+                          [score 0]
+                          [base-height BASE-INITIAL-HEIGHT]
+                          [target (make-posn 200 200)] 
+                          [tick 1]
+                          [min-vel 1]
+                          [max-vel 2]))
+
+; TEST
+(begin-for-test
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send (next-world TEST-WORLD-1) get-units))
+                (list (list (make-posn 50 54) 'green)))
+  (check-equal? (send TEST-WORLD-1 get-base-height) BASE-INITIAL-HEIGHT)
+  (check-equal? (send TEST-WORLD-1 target-loc) (make-posn 200 200)))
+
+
+;; ===== MOUSE-HANDLER ===============
+; mouse-handler : World% Coordinate Coordinate MouseEvent -> World%
+; PURPOSE: Returns this world to its next state 
+; from the given mouse positions and mouse event
+(define (mouse-handler world x y mouse-event)
+  (send world on-mouse! x y mouse-event) 
+  world)
+
+; TEST
+(begin-for-test
+  (check-equal? (map (lambda (unit) (get-loc-and-color unit))
+                     (send (mouse-handler TEST-WORLD-1 40 40 "move") get-units))
+                (list (list (make-posn 50 54) 'green)))
+  (check-equal? (send TEST-WORLD-1 get-base-height) BASE-INITIAL-HEIGHT)
+  (check-equal? (send TEST-WORLD-1 target-loc) (make-posn 40 40)))
+
+;; ===== RENDER ===============
+; render : World% -> Image
+; PURPOSE: Returns an image of the this world 
+(define (render world)
+  (send world render))
+
+; TEST
+(begin-for-test
+  (check-equal? 
+   (render TEST-WORLD)
+   (place-images (list ALLY-IMAGE POINTER-IMAGE)
+                 (list (make-posn 50 54)
+                       (make-posn 200 200))
+                 (overlay/align "middle" "bottom" 
+                                (text "60" SCORE-FONT-SIZE SCORE-COLOR)
+                                (rectangle BASE-INITIAL-WIDTH 62 
+                                           'solid BASE-COLOR) EMPTY-SCENE))))
+
+;; ===== END? ===============
+; end? : World% -> Boolean
+; PURPOSE: Returns true if the score in the world 
+; is smaller than -200 or bigger than 2250
+(define (end? world)
+  (send world end?))
+
+; TEST
+(begin-for-test 
+  (check-equal? (end? TEST-WORLD) #f))
+
+;; ===== RENDER-LAST ===============
+; render-last : World% -> Image
+; PURPOSE: Returns the last image of the this world when the game ends 
+(define (render-last world)
+  (send world render-last))
+
+; TEST
+(begin-for-test
+  (check-equal? (render-last TEST-WORLD)
+                (overlay GAME-OVER 
+                         (place-images 
+                          (list ALLY-IMAGE POINTER-IMAGE)
+                          (list (make-posn 50 54)
+                                (make-posn 200 200))
+                          (overlay/align "middle" "bottom" 
+                                         (text "60" SCORE-FONT-SIZE SCORE-COLOR)
+                                         (rectangle BASE-INITIAL-WIDTH 62 
+                                                    'solid BASE-COLOR) 
+                                         EMPTY-SCENE)))))
+
+;; ===== BIG-BANG ==============================================================
+(define (run w)
+  (big-bang w
+            (on-draw render)
+            (on-tick next-world 0.1)
+            (on-mouse mouse-handler)
+            
+            (stop-when end? render-last)))
+;(run INITIAL-WORLD)
+
+;; ===== ALTERNATIVE Analysis===================================================
+
+;;;; Alternative 1 - Pull Method 
+; The alternative is to use a pull method. In pull method, we will have to 
+; put getter functions in the Unit% interface and all the classes in Unit%
+; interface to access different fields of the classes such as color, x, y,
+; velocity. Then in the World Class, it will pull the information in the
+; Unit% to carry out the computation such as score-me, score?, update, 
+; within-unit%? within the World class rather than in the Unit% class.
+
+; scored? is a good example 
+; in it we could utiliz get-loc to get the location of the unit% and 
+; inside the world we would utilize that location agains base-height.
+
+;;;; Analysis
+; This pull method is not a good object-oriented design. 
+; 1. This pull method is basicly using objects as structs, and using the getter 
+; functions to access the field, and all the compuations of the unit is carried
+; out in the world class. 
+; 2. This pull method exposes too much unnecessary info to the world which is 
+; violating principle of least knowledge for good oo design which to reveal 
+; only what's necessary
+
+;;;; Alternative 2 - Publish-Subscribe Method 
+; The alternative is to use a publish-subscribe method. 
+; Using this method, we will have to add two interfaces pulisher and subscriber.
+; All unit classes will belong to Unit% interface and Publisher% interface,
+; and world class will belong to WorldObj% interface and Subscriber% interface.
+; When the unit object changes such as changing its location, it will send 
+; to publisher to register its change, and the World class will be informed 
+; the changes and make the changes. 
+
+;;;; Analysis
+; Publish-subscribe method is good when state changes are not frequent.
+; Using publish-subscribe method, at every tick, the Unit% need to register 
+; its changes, and the subscribers will have to make the changes. 
+; Since the changes on unit are so frequent (happens at every tick), it 
+; makes it seems unnecessary to go through the intermedium step of publish and 
+; subscribe. Therefore, using a simple push method makes more sense in our case
